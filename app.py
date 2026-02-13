@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-CORS(app) # Enable CORS for all routes
+CORS(app)
 
 SITES = {
     'Self-Service': 'https://apps.uillinois.edu/selfservice',
@@ -32,43 +32,35 @@ SITES = {
     'Webstore': 'https://webstore.illinois.edu'
 }
 
-
-status_history = {site: deque(maxlen=100) for site in SITES}
+# HISTORY CONFIGURATION
+# We want 10 minutes of data with 30-second intervals.
+# 10 mins * 60 secs / 30 secs = 20 data points.
+HISTORY_LEN = 20
+status_history = {site: deque(maxlen=HISTORY_LEN) for site in SITES}
 current_status = {}
 last_check_time = None
 
 def check_website(name, url):
     try:
         start_time = time.time()
-        # User-Agent header is important! Some sites block requests without it.
         headers = {'User-Agent': 'UIUC-Status-Monitor/1.0'}
-        response = requests.get(url, timeout=10, allow_redirects=True, headers=headers)
-        response_time = round((time.time() - start_time) * 1000, 2)
+        response = requests.get(url, timeout=5, allow_redirects=True, headers=headers)
+        # Calculate response time in ms
+        response_time = round((time.time() - start_time) * 1000)
         
         is_up = response.status_code == 200
         return {
-            'name': name,
-            'url': url,
             'status': 'up' if is_up else 'down',
-            'status_code': response.status_code,
-            'response_time': response_time,
-            'timestamp': datetime.now().isoformat()
-        }
-    except requests.exceptions.Timeout:
-        return {
-            'name': name,
-            'url': url,
-            'status': 'down',
-            'error': 'Timeout',
+            'code': response.status_code,
+            'time': response_time, # Sending 'time' specifically for the graph
             'timestamp': datetime.now().isoformat()
         }
     except Exception as e:
         logger.error(f"Error checking {name}: {e}")
         return {
-            'name': name,
-            'url': url,
             'status': 'down',
             'error': str(e),
+            'time': 0, # 0 ms indicates failure/timeout for graph
             'timestamp': datetime.now().isoformat()
         }
 
@@ -77,7 +69,6 @@ def monitor_loop():
     logger.info("Monitor thread started")
     while True:
         try:
-            logger.info("Checking all sites...")
             for name, url in SITES.items():
                 result = check_website(name, url)
                 current_status[name] = result
@@ -89,55 +80,53 @@ def monitor_loop():
         except Exception as e:
             logger.error(f"Error in monitor loop: {e}")
         
-        time.sleep(60)
+        # SLEEP 30 SECONDS (Required for the 30s bar interval)
+        time.sleep(30)
 
-# Start monitoring in a background thread
 monitor_thread = threading.Thread(target=monitor_loop, daemon=True)
 monitor_thread.start()
 
-@app.route('/')
-def index():
-    # Calculate stats exactly like in get_status
-    uptime_stats = {}
-    for site in SITES:
-        history = list(status_history[site])
+def get_stats_payload():
+    """Helper to structure data for both initial load and API"""
+    payload_sites = {}
+    
+    for name in SITES:
+        history = list(status_history[name])
+        
+        # 1. Uptime calc
         if history:
             up_count = sum(1 for h in history if h['status'] == 'up')
-            uptime_percentage = round((up_count / len(history)) * 100, 2)
-            uptime_stats[site] = uptime_percentage
+            uptime_pct = round((up_count / len(history)) * 100, 2)
         else:
-            uptime_stats[site] = 0
+            uptime_pct = 0.0
 
-    # Create the data object
-    initial_data = {
-        'sites': current_status,
-        'last_check': last_check_time.isoformat() if last_check_time else None,
-        'uptime_stats': uptime_stats
+        # 2. Get most recent status
+        latest = current_status.get(name, {})
+        
+        # 3. Simplify history for the frontend graph (just the times and status)
+        # We assume the list is chronological.
+        graph_data = [{'time': h.get('time', 0), 'status': h['status']} for h in history]
+
+        payload_sites[name] = {
+            'status': latest.get('status', 'unknown'),
+            'response_time': latest.get('time', 0),
+            'uptime': uptime_pct,
+            'history': graph_data,
+            'url': SITES[name]
+        }
+
+    return {
+        'sites': payload_sites,
+        'last_check': last_check_time.isoformat() if last_check_time else None
     }
-    
-    # Pass it to the template
-    return render_template('index.html', initial_data=initial_data)
 
+@app.route('/')
+def index():
+    return render_template('index.html', initial_data=get_stats_payload())
 
 @app.route('/api/status')
 def get_status():
-    uptime_stats = {}
-    
-    # Calculate uptime stats
-    for site in SITES:
-        history = list(status_history[site])
-        if history:
-            up_count = sum(1 for h in history if h['status'] == 'up')
-            uptime_percentage = round((up_count / len(history)) * 100, 2)
-            uptime_stats[site] = uptime_percentage
-        else:
-            uptime_stats[site] = 0 # Default to 0 if no history
-            
-    return jsonify({
-        'sites': current_status,
-        'last_check': last_check_time.isoformat() if last_check_time else None,
-        'uptime_stats': uptime_stats
-    })
+    return jsonify(get_stats_payload())
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
