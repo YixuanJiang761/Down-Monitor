@@ -3,256 +3,179 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UIUC Services Monitor</title>
+    <title>UIUC Services Status</title>
     <style>
         :root {
-            --bg-body: #111827;
-            --bg-card: #1f2937;
-            --text-main: #f3f4f6;
-            --text-muted: #9ca3af;
-            --accent-up: #10b981;
-            --accent-down: #ef4444;
-            --accent-slow: #f59e0b;
+            --bg: #0f172a;
+            --card-bg: #1e293b;
+            --text: #f8fafc;
+            --text-muted: #94a3b8;
+            --green: #10b981;
+            --red: #ef4444;
+            --yellow: #f59e0b;
         }
-
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: var(--bg); color: var(--text); font-family: sans-serif; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; }
         
-        body {
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--bg-body);
-            color: var(--text-main);
-            padding: 2rem;
-            min-height: 100vh;
-        }
+        header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 30px; }
+        h1 { margin: 0; font-size: 1.5rem; }
+        .timestamp { color: var(--text-muted); font-size: 0.9rem; font-family: monospace; }
 
-        .container { max-width: 1000px; margin: 0 auto; }
-        
-        header { margin-bottom: 2rem; display: flex; justify-content: space-between; align-items: flex-end; }
-        h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: 0.05em; }
-        .last-check { font-size: 0.85rem; color: var(--text-muted); font-family: monospace; }
-
-        /* The List Layout */
-        .services-list { display: flex; flex-direction: column; gap: 1rem; }
-
-        .service-row {
-            background-color: var(--bg-card);
+        .service-card {
+            background: var(--card-bg);
             border-radius: 8px;
-            padding: 1rem 1.5rem;
+            padding: 15px 20px;
+            margin-bottom: 12px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            transition: transform 0.2s;
-            border-left: 4px solid transparent;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
 
-        .service-row:hover { transform: translateX(5px); }
-        .service-row.up { border-left-color: var(--accent-up); }
-        .service-row.down { border-left-color: var(--accent-down); }
-
-        /* 1. Name Section */
-        .col-name { flex: 0 0 200px; }
-        .service-name { font-weight: 600; font-size: 1.1rem; display: block; }
-        .service-url { font-size: 0.75rem; color: var(--text-muted); text-decoration: none; }
+        .info-col { width: 180px; }
+        .name { font-weight: bold; display: block; font-size: 1.1rem; }
+        .url { font-size: 0.8rem; color: var(--text-muted); text-decoration: none; }
         
-        /* 2. Uptime Pie Chart Section */
-        .col-uptime { flex: 0 0 120px; display: flex; align-items: center; gap: 10px; }
-        
-        .pie-chart {
-            width: 40px;
-            height: 40px;
+        /* Circular Progress (Uptime) */
+        .uptime-col { display: flex; align-items: center; gap: 10px; width: 110px; }
+        .pie {
+            width: 40px; height: 40px;
             border-radius: 50%;
-            background: #374151; /* Fallback */
+            background: conic-gradient(var(--green) 0% 100%);
+            display: flex; align-items: center; justify-content: center;
             position: relative;
-            display: flex;
-            justify-content: center;
-            align-items: center;
         }
-        
-        /* Inner circle to make it a donut chart (optional, simpler look) */
-        .pie-chart::after {
-            content: '';
-            position: absolute;
-            width: 30px;
-            height: 30px;
-            background-color: var(--bg-card);
-            border-radius: 50%;
+        .pie::after {
+            content: ""; position: absolute;
+            width: 30px; height: 30px;
+            background: var(--card-bg); border-radius: 50%;
         }
+        .val { font-weight: bold; font-size: 0.9rem; }
 
-        .uptime-text { font-size: 0.9rem; font-weight: bold; color: var(--text-main); }
-
-        /* 3. History Bar Graph (The "Pills") */
-        .col-history { 
-            flex: 1; 
-            padding: 0 2rem; 
-            display: flex; 
-            flex-direction: column; 
-            justify-content: center; 
+        /* Bar Graph (History) */
+        .history-col { flex: 1; margin: 0 30px; display: flex; flex-direction: column; justify-content: center; }
+        .bars {
+            display: flex; align-items: flex-end; gap: 4px;
+            height: 30px; width: 100%;
         }
-        .history-label { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px; text-align: right;}
-        
-        .history-track {
-            display: flex;
-            align-items: flex-end; /* Bars grow up */
-            gap: 4px;
-            height: 30px;
-            width: 100%;
-        }
-
         .bar {
             flex: 1;
-            min-width: 4px;
-            background-color: #374151; /* Empty state */
+            background: #334155;
             border-radius: 2px;
-            opacity: 0.8;
-            transition: height 0.3s, background-color 0.3s;
+            transition: height 0.3s;
+            min-height: 4px;
         }
+        .subtitle { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; text-align: right; }
 
-        /* 4. Response Time */
-        .col-response { flex: 0 0 80px; text-align: right; }
-        .resp-badge {
-            background: #374151;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.85rem;
-            font-family: monospace;
-            color: var(--text-main);
+        /* Current Status Badge */
+        .status-col { text-align: right; width: 80px; }
+        .badge {
+            background: #334155; padding: 4px 8px;
+            border-radius: 4px; font-size: 0.85rem; font-family: monospace;
         }
-
     </style>
 </head>
 <body>
-
     <div class="container">
         <header>
-            <h1>UIUC SERVICE STATUS</h1>
-            <div id="lastCheck" class="last-check">Syncing...</div>
+            <h1>UIUC Services</h1>
+            <div class="timestamp" id="lastCheck">Loading...</div>
         </header>
-
-        <div id="servicesList" class="services-list">
-            </div>
+        <div id="grid"></div>
     </div>
 
     <script>
+        // 1. GET INITIAL DATA FROM FLASK (Instant Load)
         const INITIAL_DATA = {{ initial_data | tojson | safe }};
 
-        // Utility to generate Pie Chart CSS
-        function getPieStyle(percentage) {
-            // Conic gradient: Green up to X%, Dark Grey for the rest
-            const deg = (percentage / 100) * 360;
-            return `background: conic-gradient(var(--accent-up) 0deg ${deg}deg, #374151 ${deg}deg 360deg)`;
-        }
-
-        // Utility to determine bar color based on ms
         function getBarColor(ms, status) {
-            if (status !== 'up') return 'var(--accent-down)';
-            if (ms > 500) return 'var(--accent-slow)';
-            return 'var(--accent-up)';
+            if (status !== 'up') return 'var(--red)';
+            if (ms > 500) return 'var(--yellow)';
+            return 'var(--green)';
         }
 
-        async function updateDisplay(data) {
-            const list = document.getElementById('servicesList');
+        function updateDisplay(data) {
+            const grid = document.getElementById('grid');
             document.getElementById('lastCheck').innerText = 
-                data.last_check ? new Date(data.last_check).toLocaleTimeString() : 'Offline';
+                data.last_check ? new Date(data.last_check).toLocaleTimeString() : 'Syncing...';
 
-            if (!data.sites) return;
+            grid.innerHTML = '';
 
-            // Clear list (or efficiently update in a real React app, but innerHTML is fine here)
-            list.innerHTML = '';
-
-            // Sort sites alphabetically
-            const sortedSites = Object.keys(data.sites).sort();
-
-            sortedSites.forEach(name => {
-                const info = data.sites[name];
-                const isUp = info.status === 'up';
+            // Sort alphabetical
+            Object.keys(data.sites).sort().forEach(name => {
+                const site = data.sites[name];
+                const history = site.history || [];
                 
-                // 1. Uptime Pie Logic
-                const uptime = info.uptime || 0;
-                const pieStyle = getPieStyle(uptime);
+                // 1. Generate Bars (Right aligned, filling left with empty if needed)
+                let barsHtml = '';
+                // We want exactly 20 bars
+                for (let i = 0; i < 20; i++) {
+                    // Get data from end of array (most recent)
+                    // If i=0 (first bar on left), we need index = length - 20.
+                    const dataIndex = history.length - (20 - i);
+                    
+                    let style = 'height: 4px; background: #334155'; // Default empty
+                    let title = 'No Data';
 
-                // 2. History Bars Logic
-                // We expect info.history to be an array of objects: {time: ms, status: 'up'/'down'}
-                // We want exactly 20 bars. If less data, pad with empty bars.
-                let historyHtml = '';
-                const maxBars = 20; 
-                const historyData = info.history || [];
-                
-                // Create placeholders if we don't have 20 data points yet
-                for (let i = 0; i < maxBars; i++) {
-                    // Logic: render from oldest (left) to newest (right)
-                    // If history has 5 items, we want indices 0-4 to be empty, 5-19 to be data?
-                    // Actually, easiest is to fill right-to-left.
-                    
-                    const dataIndex = historyData.length - (maxBars - i);
-                    
-                    let barStyle = 'height: 4px; background-color: #374151;'; // Empty/Default
-                    
                     if (dataIndex >= 0) {
-                        const point = historyData[dataIndex];
-                        const ms = point.time;
-                        // Calculate height percentage (cap at 1000ms for full height)
-                        let heightPct = Math.min((ms / 1000) * 100, 100);
-                        // Ensure at least a little height so it's visible even if 0ms
-                        heightPct = Math.max(heightPct, 15);
-                        
-                        // Full height if down
-                        if (point.status !== 'up') heightPct = 100;
+                        const point = history[dataIndex];
+                        // Calc height (cap at 1000ms = 100%)
+                        let pct = Math.min((point.time / 1000) * 100, 100);
+                        if (point.status !== 'up') pct = 100; // Full height for errors
+                        pct = Math.max(pct, 10); // Min height visibility
 
-                        const color = getBarColor(ms, point.status);
-                        barStyle = `height: ${heightPct}%; background-color: ${color};`;
+                        const color = getBarColor(point.time, point.status);
+                        style = `height: ${pct}%; background: ${color}`;
+                        title = `${point.time}ms`;
                     }
-                    
-                    historyHtml += `<div class="bar" style="${barStyle}" title="${dataIndex >= 0 ? historyData[dataIndex].time + 'ms' : 'No data'}"></div>`;
+                    barsHtml += `<div class="bar" style="${style}" title="${title}"></div>`;
                 }
 
-                // Construct Row
-                const row = document.createElement('div');
-                row.className = `service-row ${isUp ? 'up' : 'down'}`;
-                
-                row.innerHTML = `
-                    <div class="col-name">
-                        <span class="service-name">${name}</span>
-                        <a href="${info.url}" target="_blank" class="service-url">${info.url.replace('https://','')}</a>
+                // 2. Generate Pie Style
+                const upPct = site.uptime;
+                const pieStyle = `background: conic-gradient(var(--green) 0% ${upPct}%, #334155 ${upPct}% 100%)`;
+
+                // 3. Create Card
+                const card = document.createElement('div');
+                card.className = 'service-card';
+                card.innerHTML = `
+                    <div class="info-col">
+                        <span class="name">${name}</span>
+                        <a href="${site.url}" target="_blank" class="url">Visit Site</a>
                     </div>
                     
-                    <div class="col-uptime">
-                        <div class="pie-chart" style="${pieStyle}"></div>
-                        <span class="uptime-text">${uptime}%</span>
+                    <div class="uptime-col">
+                        <div class="pie" style="${pieStyle}"></div>
+                        <span class="val">${upPct}%</span>
                     </div>
 
-                    <div class="col-history">
-                        <div class="history-label">Response time (10min)</div>
-                        <div class="history-track">
-                            ${historyHtml}
-                        </div>
+                    <div class="history-col">
+                        <div class="subtitle">Last 10 min</div>
+                        <div class="bars">${barsHtml}</div>
                     </div>
 
-                    <div class="col-response">
-                        <span class="resp-badge" style="color: ${isUp ? 'var(--accent-up)' : 'var(--accent-down)'}">
-                            ${isUp ? info.response_time + 'ms' : 'ERR'}
+                    <div class="status-col">
+                        <span class="badge" style="color: ${site.current.status === 'up' ? 'var(--green)' : 'var(--red)'}">
+                            ${site.current.status === 'up' ? site.current.time + 'ms' : 'ERR'}
                         </span>
                     </div>
                 `;
-                
-                list.appendChild(row);
+                grid.appendChild(card);
             });
         }
 
-        async function fetchStatus() {
-            try {
-                const response = await fetch('/api/status');
-                const data = await response.json();
-                updateDisplay(data);
-            } catch (e) {
-                console.error("Fetch failed", e);
-            }
-        }
+        // Initialize immediately with Python data
+        updateDisplay(INITIAL_DATA);
 
-        // Init
-        document.addEventListener('DOMContentLoaded', () => {
-            updateDisplay(INITIAL_DATA);
-            setInterval(fetchStatus, 30000); // 30 seconds
-        });
+        // Fetch updates every 30s
+        async function fetchUpdates() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                updateDisplay(data);
+            } catch(e) { console.error(e); }
+        }
+        setInterval(fetchUpdates, 30000);
     </script>
 </body>
 </html>

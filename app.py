@@ -32,11 +32,12 @@ SITES = {
     'Webstore': 'https://webstore.illinois.edu'
 }
 
-# HISTORY CONFIGURATION
-# We want 10 minutes of data with 30-second intervals.
-# 10 mins * 60 secs / 30 secs = 20 data points.
-HISTORY_LEN = 20
-status_history = {site: deque(maxlen=HISTORY_LEN) for site in SITES}
+# CONFIGURATION
+# 30 seconds interval * 20 items = 600 seconds (10 Minutes)
+HISTORY_LENGTH = 20 
+UPDATE_INTERVAL = 30
+
+status_history = {site: deque(maxlen=HISTORY_LENGTH) for site in SITES}
 current_status = {}
 last_check_time = None
 
@@ -44,23 +45,20 @@ def check_website(name, url):
     try:
         start_time = time.time()
         headers = {'User-Agent': 'UIUC-Status-Monitor/1.0'}
-        response = requests.get(url, timeout=5, allow_redirects=True, headers=headers)
-        # Calculate response time in ms
+        response = requests.get(url, timeout=5, headers=headers)
         response_time = round((time.time() - start_time) * 1000)
         
-        is_up = response.status_code == 200
         return {
-            'status': 'up' if is_up else 'down',
+            'status': 'up' if response.status_code == 200 else 'down',
+            'time': response_time,
             'code': response.status_code,
-            'time': response_time, # Sending 'time' specifically for the graph
             'timestamp': datetime.now().isoformat()
         }
     except Exception as e:
-        logger.error(f"Error checking {name}: {e}")
         return {
             'status': 'down',
+            'time': 0,
             'error': str(e),
-            'time': 0, # 0 ms indicates failure/timeout for graph
             'timestamp': datetime.now().isoformat()
         }
 
@@ -76,57 +74,51 @@ def monitor_loop():
             
             last_check_time = datetime.now()
             logger.info(f"Check complete at {last_check_time}")
-            
         except Exception as e:
-            logger.error(f"Error in monitor loop: {e}")
+            logger.error(f"Error: {e}")
         
-        # SLEEP 30 SECONDS (Required for the 30s bar interval)
-        time.sleep(30)
+        time.sleep(UPDATE_INTERVAL)
 
-monitor_thread = threading.Thread(target=monitor_loop, daemon=True)
-monitor_thread.start()
+# Start Background Thread
+threading.Thread(target=monitor_loop, daemon=True).start()
 
-def get_stats_payload():
-    """Helper to structure data for both initial load and API"""
-    payload_sites = {}
-    
+def get_site_data():
+    """Compiles the full data payload for frontend"""
+    data = {}
     for name in SITES:
         history = list(status_history[name])
         
-        # 1. Uptime calc
+        # Calculate Uptime
         if history:
             up_count = sum(1 for h in history if h['status'] == 'up')
-            uptime_pct = round((up_count / len(history)) * 100, 2)
+            uptime = round((up_count / len(history)) * 100, 2)
         else:
-            uptime_pct = 0.0
+            uptime = 0.0
 
-        # 2. Get most recent status
-        latest = current_status.get(name, {})
-        
-        # 3. Simplify history for the frontend graph (just the times and status)
-        # We assume the list is chronological.
-        graph_data = [{'time': h.get('time', 0), 'status': h['status']} for h in history]
+        # Extract History for Graph (Simple list of {time, status})
+        graph_data = [{'time': h['time'], 'status': h['status']} for h in history]
 
-        payload_sites[name] = {
-            'status': latest.get('status', 'unknown'),
-            'response_time': latest.get('time', 0),
-            'uptime': uptime_pct,
+        data[name] = {
+            'current': current_status.get(name, {}),
+            'uptime': uptime,
             'history': graph_data,
             'url': SITES[name]
         }
-
+    
     return {
-        'sites': payload_sites,
+        'sites': data,
         'last_check': last_check_time.isoformat() if last_check_time else None
     }
 
 @app.route('/')
 def index():
-    return render_template('index.html', initial_data=get_stats_payload())
+    # Inject data directly into template for Instant Load
+    return render_template('index.html', initial_data=get_site_data())
 
 @app.route('/api/status')
 def get_status():
-    return jsonify(get_stats_payload())
+    # API returns same structure for updates
+    return jsonify(get_site_data())
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
