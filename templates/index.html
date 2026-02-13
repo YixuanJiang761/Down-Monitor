@@ -31,77 +31,100 @@
             justify-content: space-between; 
             align-items: baseline; 
             margin-bottom: 2rem; 
-            border-bottom: 1px solid #334155; 
-            padding-bottom: 1rem; 
+            border-bottom: 1px solid #334155;
+            padding-bottom: 1rem;
         }
         
         h1 { margin: 0; font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
         .timestamp { color: var(--text-muted); font-size: 0.9rem; font-family: monospace; }
 
-        /* GRID LAYOUT */
+        /* TWO COLUMN GRID LAYOUT */
         .services-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); /* Creates 2 cols on wide screens */
             gap: 1.5rem;
         }
 
-        /* CARD STYLES */
         .service-card {
             background: var(--card-bg);
             border-radius: 12px;
             padding: 1.25rem;
             display: flex;
             flex-direction: column;
-            gap: 1rem;
+            gap: 1rem; /* Space between Top and Bottom sections */
             border: 1px solid #334155;
             transition: transform 0.2s, box-shadow 0.2s;
         }
         
         .service-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
-            border-color: #64748b;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            border-color: #475569;
         }
 
-        /* Top: Name + Pie */
-        .card-top { display: flex; justify-content: space-between; align-items: center; }
+        /* --- TOP SECTION: Name + Pie Chart --- */
+        .card-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
         .info-group { display: flex; flex-direction: column; }
-        .name { font-weight: 600; font-size: 1.1rem; display: block; color: var(--text); }
+        .name { font-weight: 600; font-size: 1.1rem; color: var(--text); }
         .url { font-size: 0.8rem; color: var(--text-muted); text-decoration: none; margin-top: 2px; }
         .url:hover { color: var(--green); text-decoration: underline; }
 
         .uptime-group { display: flex; align-items: center; gap: 10px; }
         .pie {
-            width: 38px; height: 38px;
+            width: 36px; height: 36px;
             border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
             position: relative;
         }
         .pie::after {
             content: ""; position: absolute;
-            width: 28px; height: 28px;
+            width: 26px; height: 26px;
             background: var(--card-bg); border-radius: 50%;
         }
-        .val { font-weight: 700; font-size: 0.85rem; z-index: 1; }
+        .val { font-weight: 700; font-size: 0.8rem; z-index: 1; }
 
-        /* Bottom: History + Status */
+        /* --- BOTTOM SECTION: Bars + Status Badge --- */
         .card-bottom {
-            display: flex; align-items: flex-end; justify-content: space-between;
-            gap: 1rem; padding-top: 0.75rem; border-top: 1px solid #334155;
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 1rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid #334155;
         }
+
         .history-wrapper { flex: 1; }
-        .history-label { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .history-label { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 6px; }
         
-        .bars { display: flex; align-items: flex-end; gap: 2px; height: 32px; width: 100%; }
+        .bars {
+            display: flex;
+            align-items: flex-end;
+            gap: 3px; /* Tighter gap for squashed look */
+            height: 30px;
+            width: 100%;
+        }
+        
         .bar {
-            flex: 1; background: #334155; border-radius: 2px; min-height: 4px;
+            flex: 1;
+            background: #334155;
+            border-radius: 2px;
+            min-height: 4px;
             transition: height 0.3s;
         }
-        .bar:hover { opacity: 0.8; transform: scaleY(1.1); }
-        
+
         .status-badge {
-            background: #0f172a; padding: 6px 10px; border-radius: 6px;
-            font-size: 0.85rem; font-family: monospace; font-weight: 600; white-space: nowrap;
+            background: #0f172a;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-family: monospace;
+            font-weight: 600;
+            white-space: nowrap;
         }
     </style>
 </head>
@@ -109,37 +132,40 @@
     <div class="container">
         <header>
             <h1>UIUC Services Monitor</h1>
-            <div class="timestamp" id="lastCheck">Connecting...</div>
+            <div class="timestamp" id="lastCheck">Syncing...</div>
         </header>
         
-        <div id="grid" class="services-grid"></div>
+        <div id="grid" class="services-grid">
+            </div>
     </div>
 
     <script>
+        // Load initial data from Python
         const INITIAL_DATA = {{ initial_data | tojson | safe }};
 
         function getBarColor(ms, status) {
             if (status !== 'up') return 'var(--red)';
-            if (ms > 800) return 'var(--yellow)';
+            if (ms > 500) return 'var(--yellow)';
             return 'var(--green)';
         }
 
-        function render(data) {
+        function updateDisplay(data) {
             const grid = document.getElementById('grid');
-            
             if (data.last_check) {
                 document.getElementById('lastCheck').innerText = "Last checked: " + new Date(data.last_check).toLocaleTimeString();
             }
 
             if (!data.sites) return;
+            
             grid.innerHTML = ''; 
 
-            // data.sites is now an Array (List). It iterates in the exact order from Python.
-            data.sites.forEach(site => {
-                
-                // History Bars
-                let barsHtml = '';
+            // Sort alphabetically
+            Object.keys(data.sites).sort().forEach(name => {
+                const site = data.sites[name];
                 const history = site.history || [];
+                
+                // --- Generate Bars (20 items) ---
+                let barsHtml = '';
                 for (let i = 0; i < 20; i++) {
                     const idx = history.length - (20 - i);
                     let style = 'height: 4px; background: #334155';
@@ -150,6 +176,7 @@
                         let pct = Math.min((point.time / 1000) * 100, 100);
                         if (point.status !== 'up') pct = 100;
                         pct = Math.max(pct, 15);
+
                         const color = getBarColor(point.time, point.status);
                         style = `height: ${pct}%; background: ${color}`;
                         tooltip = `${point.time}ms`;
@@ -157,7 +184,7 @@
                     barsHtml += `<div class="bar" style="${style}" title="${tooltip}"></div>`;
                 }
 
-                // Pie Chart & Status
+                // --- Pie Chart Style ---
                 const pieStyle = `background: conic-gradient(var(--green) 0% ${site.uptime}%, #334155 ${site.uptime}% 100%)`;
                 const statusColor = site.current.status === 'up' ? 'var(--green)' : 'var(--red)';
                 const statusText = site.current.status === 'up' ? site.current.time + 'ms' : 'DOWN';
@@ -167,7 +194,7 @@
                 card.innerHTML = `
                     <div class="card-top">
                         <div class="info-group">
-                            <span class="name">${site.name}</span>
+                            <span class="name">${name}</span>
                             <a href="${site.url}" target="_blank" class="url">Visit Site &rarr;</a>
                         </div>
                         <div class="uptime-group">
@@ -175,9 +202,10 @@
                             <div class="pie" style="${pieStyle}"></div>
                         </div>
                     </div>
+
                     <div class="card-bottom">
                         <div class="history-wrapper">
-                            <div class="history-label">Latency (10m)</div>
+                            <div class="history-label">Response Time (Last 10m)</div>
                             <div class="bars">${barsHtml}</div>
                         </div>
                         <div class="status-badge" style="color: ${statusColor}">
@@ -189,12 +217,14 @@
             });
         }
 
-        if (INITIAL_DATA) render(INITIAL_DATA);
+        // Initialize
+        if (INITIAL_DATA) updateDisplay(INITIAL_DATA);
 
+        // Auto-refresh
         setInterval(async () => {
             try {
                 const res = await fetch('/api/status');
-                render(await res.json());
+                updateDisplay(await res.json());
             } catch(e) { console.error(e); }
         }, 30000);
     </script>
