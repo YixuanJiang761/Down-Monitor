@@ -14,4 +14,8 @@ RUN ls -la /app/templates || echo "Warning: templates folder not found"
 
 EXPOSE 8080
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--threads", "4", "--timeout", "120", "app:app"]
+# Old
+# CMD ["gunicorn", ... "--workers", "2", ... "app:app"]
+
+# New (Use 1 worker to keep a single in-memory history)
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "8", "--timeout", "120", "app:app"]
