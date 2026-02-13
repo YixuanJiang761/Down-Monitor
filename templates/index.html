@@ -155,78 +155,92 @@
         </footer>
     </div>
 
-    <script>
-        async function fetchStatus() {
-            try {
-                const response = await fetch('/api/status');
-                const data = await response.json();
-                
-                updateDisplay(data);
-            } catch (error) {
-                console.error('Error fetching status:', error);
-            }
+<script>
+    async function fetchStatus() {
+        console.log("Starting fetch...");
+        try {
+            const response = await fetch('/api/status?t=' + new Date().getTime());
+            if (!response.ok) throw new Error("Network response was not ok");
+            
+            const data = await response.json();
+            console.log("FULL DATA RECEIVED:", data); // Check console for this!
+            
+            updateDisplay(data);
+        } catch (error) {
+            console.error("Fetch error:", error);
+            document.getElementById('lastCheck').textContent = "Error loading data";
         }
+    }
+
+    function updateDisplay(data) {
+        console.log("Updating display...");
         
-        function updateDisplay(data) {
-            const grid = document.getElementById('servicesGrid');
-            const lastCheck = document.getElementById('lastCheck');
+        // DEBUG: Check if elements exist
+        const lastCheck = document.getElementById('lastCheck');
+        const grid = document.getElementById('servicesGrid');
+        
+        if (!lastCheck) console.error("Element #lastCheck not found!");
+        if (!grid) console.error("Element #servicesGrid not found!");
+
+        // 1. Update Timestamp
+        if (data.last_check) {
+            console.log("Updating time to:", data.last_check);
+            lastCheck.textContent = "Last checked: " + new Date(data.last_check).toLocaleString();
+        } else {
+            console.warn("data.last_check is missing or null");
+            lastCheck.textContent = "Last checked: Unknown (No timestamp)";
+        }
+
+        // 2. Update Grid
+        if (!data.sites) {
+            console.error("data.sites is missing!");
+            return;
+        }
+
+        grid.innerHTML = ''; // Clear old content
+        
+        for (const [name, info] of Object.entries(data.sites)) {
+            const card = document.createElement('div');
+            card.className = 'service-card';
             
-            // Update last check time
-            if (data.last_check) {
-                const date = new Date(data.last_check);
-                lastCheck.textContent = `Last checked: ${date.toLocaleString()}`;
-            }
+            // Determine status
+            const isUp = info.status === 'up';
+            const statusClass = isUp ? 'status-up' : 'status-down';
+            const statusText = isUp ? 'Operational' : 'Down';
             
-            // Clear grid
-            grid.innerHTML = '';
-            
-            // Add service cards
-            for (const [name, info] of Object.entries(data.sites)) {
-                const card = document.createElement('div');
-                card.className = 'service-card';
-                
-                const statusClass = info.status === 'up' ? 'status-up' : 'status-down';
-                const statusText = info.status === 'up' ? 'Operational' : 'Down';
-                
-                let infoHTML = '';
-                if (info.status === 'up') {
-                    infoHTML = `
-                        <div class="service-info">
-                            Response time: <span class="response-time">${info.response_time}ms</span>
-                        </div>
-                        <div class="uptime">
-                            Uptime: ${data.uptime_stats[name]}%
-                        </div>
-                    `;
-                } else {
-                    infoHTML = `
-                        <div class="error-msg">
-                            ${info.error || 'Service unavailable'}
-                        </div>
-                        <div class="uptime">
-                            Uptime: ${data.uptime_stats[name]}%
-                        </div>
-                    `;
-                }
-                
-                card.innerHTML = `
-                    <div class="service-header">
-                        <div class="service-name">${name}</div>
-                        <div class="status-indicator ${statusClass}"></div>
-                    </div>
-                    <div class="service-info">${statusText}</div>
-                    ${infoHTML}
+            // Uptime (handle missing uptime)
+            const uptime = data.uptime_stats && data.uptime_stats[name] ? data.uptime_stats[name] : '0';
+
+            let infoHTML = '';
+            if (isUp) {
+                infoHTML = `
+                    <div class="service-info">Response: <span class="response-time">${info.response_time || 0}ms</span></div>
+                    <div class="uptime">Uptime: ${uptime}%</div>
                 `;
-                
-                grid.appendChild(card);
+            } else {
+                infoHTML = `
+                    <div class="error-msg">${info.error || 'Service unavailable'}</div>
+                    <div class="uptime">Uptime: ${uptime}%</div>
+                `;
             }
+            
+            card.innerHTML = `
+                <div class="service-header">
+                    <div class="service-name">${name}</div>
+                    <div class="status-indicator ${statusClass}"></div>
+                </div>
+                <div class="service-info">${statusText}</div>
+                ${infoHTML}
+            `;
+            grid.appendChild(card);
         }
-        
-        // Initial fetch
-        fetchStatus();
-        
-        // Auto-refresh every 30 seconds
-        setInterval(fetchStatus, 30000);
-    </script>
+        console.log("Display update complete.");
+    }
+
+    // Run on load
+    document.addEventListener('DOMContentLoaded', fetchStatus);
+    setInterval(fetchStatus, 30000);
+</script>
+
 </body>
 </html>
