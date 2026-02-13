@@ -1,12 +1,16 @@
 from flask import Flask, render_template, jsonify
 from flask_cors import CORS
 import requests
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from datetime import datetime
 import threading
 import time
 import json
 import os
 import logging
+
+# Suppress SSL warnings for internal tools
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -19,7 +23,7 @@ HISTORY_FILE = 'history.json'
 HISTORY_LENGTH = 20
 UPDATE_INTERVAL = 30
 
-# FIX: All items here are now strictly tuples ('Name', 'Url')
+# DEFINED ORDER
 ORDERED_SITES = [
     ('Self-Service', 'https://apps.uillinois.edu/selfservice'),
     ('Canvas', 'https://canvas.illinois.edu'),
@@ -29,7 +33,7 @@ ORDERED_SITES = [
     ('Media Space', 'https://mediaspace.illinois.edu'),
     ('APPS Directory', 'https://apps.uillinois.edu'),
     ('Illinois.edu', 'https://illinois.edu'),
-    ('Student Affairs', 'https://studentaffairs.illinois.edu'),  # <--- FIXED: Changed : to ,
+    ('Student Affairs', 'https://studentaffairs.illinois.edu'),
     ('Admissions', 'https://admissions.illinois.edu'),
     ('University Housing', 'https://housing.illinois.edu'),
     ('Library', 'https://library.illinois.edu'),
@@ -49,7 +53,6 @@ def load_history():
             with open(HISTORY_FILE, 'r') as f:
                 data = json.load(f)
                 status_history = data.get('history', {})
-                # Trim history
                 for name in status_history:
                     status_history[name] = status_history[name][-HISTORY_LENGTH:]
                 current_status = data.get('current', {})
@@ -75,14 +78,29 @@ load_history()
 def check_website(url):
     try:
         start = time.time()
-        headers = {'User-Agent': 'UIUC-Status-Monitor/1.0'}
-        resp = requests.get(url, timeout=5, headers=headers)
+        
+        # HEADERS ARE CRITICAL: Mimic a real Chrome browser
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'
+        }
+        
+        # verify=False prevents SSL certificate errors from marking site as down
+        resp = requests.get(url, timeout=10, headers=headers, verify=False)
+        
+        # Consider these codes as "UP"
+        is_up = resp.status_code in [200, 201, 202, 301, 302, 307, 308, 401, 403]
+        
         return {
-            'status': 'up' if resp.status_code == 200 else 'down',
+            'status': 'up' if is_up else 'down',
             'time': round((time.time() - start) * 1000),
             'timestamp': datetime.now().isoformat()
         }
     except Exception as e:
+        logger.error(f"Check failed for {url}: {e}")
         return {'status': 'down', 'time': 0, 'error': str(e), 'timestamp': datetime.now().isoformat()}
 
 def monitor_loop():
@@ -108,11 +126,8 @@ def monitor_loop():
 
 def get_payload():
     site_list = []
-    
-    # Iterate over ORDERED_SITES to preserve order
     for name, url in ORDERED_SITES:
         hist = status_history.get(name, [])
-        
         if hist:
             up = sum(1 for h in hist if h['status'] == 'up')
             uptime = round((up / len(hist)) * 100, 1)
