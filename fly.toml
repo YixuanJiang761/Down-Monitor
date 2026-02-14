@@ -3,17 +3,19 @@
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'down-monitor-eu1r9g'
-primary_region = 'ams'
+# 应用名称 (必须全局唯一)
+app = 'down-monitor-eulr9g'
+# 部署区域 (iad = Ashburn, Virginia，靠近 UIUC)
+primary_region = 'iad'
 
 [build]
 
 [http_service]
-  internal_port = 8080
-  force_https = true
-  auto_stop_machines = 'stop'
-  auto_start_machines = true
-  min_machines_running = 0
+  internal_port = 8080 # 容器内部监听端口
+  force_https = true   # 强制重定向 HTTP 到 HTTPS
+  auto_stop_machines = false # 禁止自动停止 (必须保持运行以维持内存数据)
+  auto_start_machines = true # 允许自动启动
+  min_machines_running = 2   # 始终保持至少 1 个实例运行 (防止数据丢失)
   processes = ['app']
 
 [[vm]]
