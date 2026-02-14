@@ -4,40 +4,57 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UIUC Services Status</title>
+    <title>UIUC Services Status</title> <!-- 页面标题 -->
     <style>
+        /* 定义全局 CSS 变量 (配色方案) */
         :root {
             --bg: #0f172a;
+            /* 背景深蓝色 */
             --card-bg: #1e293b;
+            /* 卡片背景色 */
             --text: #f8fafc;
+            /* 主要文字白灰色 */
             --text-muted: #94a3b8;
+            /* 次要文字灰色 */
             --green: #10b981;
+            /* 状态正常绿色 */
             --red: #ef4444;
+            /* 状态故障红色 */
             --yellow: #f59e0b;
+            /* 警告/延迟高黄色 */
         }
 
+        /* 统一盒模型，方便布局计算 */
         * {
             box-sizing: border-box;
         }
 
+        /* 页面主体样式 */
         body {
             background: var(--bg);
             color: var(--text);
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            /* 系统默认字体栈 */
             padding: 2rem;
+            /* 页面内边距 */
         }
 
+        /* 内容容器，限制最大宽度 */
         .container {
             max-width: 1200px;
             margin: 0 auto;
+            /* 居中显示 */
         }
 
+        /* 顶部标题栏 */
         header {
             display: flex;
             justify-content: space-between;
+            /* 标题和时间左右分布 */
             align-items: baseline;
             margin-bottom: 2rem;
             border-bottom: 1px solid #334155;
+            /* 底部下划线 */
             padding-bottom: 1rem;
         }
 
@@ -48,39 +65,50 @@
             letter-spacing: -0.025em;
         }
 
+        /* 时间戳样式 */
         .timestamp {
             color: var(--text-muted);
             font-size: 0.9rem;
             font-family: monospace;
+            /* 等宽字体，适合显示数字 */
         }
 
-        /* TWO COLUMN GRID LAYOUT */
+        /* --- 核心网格布局 --- */
         .services-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-            /* Creates 2 cols on wide screens */
+            /* 响应式：每列至少 400px，自动填充 */
             gap: 1.5rem;
+            /* 网格间距 */
         }
 
+        /* 单个服务卡片样式 */
         .service-card {
             background: var(--card-bg);
             border-radius: 12px;
+            /* 圆角 */
             padding: 1.25rem;
             display: flex;
             flex-direction: column;
             gap: 1rem;
             /* Space between Top and Bottom sections */
             border: 1px solid #334155;
+            /* 边框颜色 */
             transition: transform 0.2s, box-shadow 0.2s;
+            /* 悬停动画过渡 */
         }
 
+        /* 鼠标悬停卡片时的效果 */
         .service-card:hover {
             transform: translateY(-2px);
+            /* 微微上浮 */
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            /* 增加阴影 */
             border-color: #475569;
+            /* 边框变亮 */
         }
 
-        /* --- TOP SECTION: Name + Pie Chart --- */
+        /* --- 卡片上部：名称 + 饼图 --- */
         .card-top {
             display: flex;
             justify-content: space-between;
@@ -116,16 +144,20 @@
             gap: 10px;
         }
 
+        /* 纯 CSS 饼图实现 */
         .pie {
             width: 36px;
             height: 36px;
             border-radius: 50%;
+            /* 圆形 */
             display: flex;
             align-items: center;
             justify-content: center;
             position: relative;
+            /* 背景色由 JS 动态生成 conic-gradient 以显示进度 */
         }
 
+        /* 饼图中心的遮罩，形成甜甜圈效果 */
         .pie::after {
             content: "";
             position: absolute;
@@ -135,13 +167,15 @@
             border-radius: 50%;
         }
 
+        /* 在线率百分比数字 */
         .val {
             font-weight: 700;
             font-size: 0.8rem;
             z-index: 1;
+            /* 确保数字显示在遮罩上方 */
         }
 
-        /* --- BOTTOM SECTION: Bars + Status Badge --- */
+        /* --- 卡片下部：历史柱状图 + 状态徽章 --- */
         .card-bottom {
             display: flex;
             align-items: flex-end;
@@ -153,6 +187,7 @@
 
         .history-wrapper {
             flex: 1;
+            /* 占据剩余空间 */
         }
 
         .history-label {
@@ -161,23 +196,30 @@
             margin-bottom: 6px;
         }
 
+        /* 柱状图容器 */
         .bars {
             display: flex;
             align-items: flex-end;
+            /* 底部对齐 */
             gap: 3px;
             /* Tighter gap for squashed look */
             height: 30px;
             width: 100%;
         }
 
+        /* 单个柱子样式 */
         .bar {
             flex: 1;
             background: #334155;
+            /* 默认灰色（无数据） */
             border-radius: 2px;
             min-height: 4px;
+            /* 即使数值为0也显示一点高度 */
             transition: height 0.3s;
+            /* 高度变化动画 */
         }
 
+        /* 当前状态徽章 (UP/DOWN) */
         .status-badge {
             background: #0f172a;
             padding: 4px 10px;
@@ -186,6 +228,7 @@
             font-family: monospace;
             font-weight: 600;
             white-space: nowrap;
+            /* 不换行 */
         }
     </style>
 </head>
@@ -194,96 +237,107 @@
     <div class="container">
         <header>
             <h1>UIUC Services Monitor</h1>
+            <!-- 时间显示区域 -->
             <div class="timestamp">
                 <span id="lastCheck">Syncing...</span>
+                <!-- 倒计时显示，tabular-nums 确保数字变化时宽度不变，避免抖动 -->
                 <span id="countdown"
                     style="margin-left: 10px; color: var(--green); font-weight: 600; font-variant-numeric: tabular-nums;"></span>
             </div>
         </header>
 
+        <!-- 服务卡片网格容器 -->
         <div id="grid" class="services-grid">
         </div>
     </div>
 
+    <!-- 初始数据注入块 (JSON) -->
     <script type="application/json" id="initial-data">
         {{ initial_data | tojson | safe }}
     </script>
     <script>
-        // Load initial data from Python
+        // 从 HTML 中读取后端传入的初始数据，避免首屏加载等待 AJAX
         const INITIAL_DATA = JSON.parse(document.getElementById('initial-data').textContent);
 
-        let countdownInterval;
+        let countdownInterval; // 倒计时定时器引用
 
+        // 根据响应时间和状态决定柱子颜色
         function getBarColor(ms, status) {
-            if (status !== 'up') return 'var(--red)';
-            if (ms > 500) return 'var(--yellow)';
-            return 'var(--green)';
+            if (status !== 'up') return 'var(--red)';    // 故障显示红色
+            if (ms > 500) return 'var(--yellow)';        // 这里设定 > 500ms 为慢速，显示黄色
+            return 'var(--green)';                       // 正常显示绿色
         }
 
+        // 启动/重置倒计时逻辑
         function startCountdown(lastCheckTimeStr) {
+            // 清除旧的定时器，防止重复运行
             if (countdownInterval) clearInterval(countdownInterval);
 
+            // 解析最后检查时间（注意：lastCheckTimeStr 必须是 UTC ISO 格式以保证正确性）
             const lastCheckTime = new Date(lastCheckTimeStr).getTime();
-            const nextCheckTime = lastCheckTime + 30000 + 2000; // 30s interval + 2s buffer
+            const nextCheckTime = lastCheckTime + 30000 + 2000; // 下次检查时间 = 上次时间 + 30秒周期 + 2秒缓冲
 
             function updateTimer() {
-                const now = Date.now();
-                const diff = Math.ceil((nextCheckTime - now) / 1000);
+                const now = Date.now(); // 当前时间 (UTC)
+                const diff = Math.ceil((nextCheckTime - now) / 1000); // 计算剩余秒数
 
                 const el = document.getElementById('countdown');
                 if (diff > 0) {
-                    el.innerText = `Next check in ${diff}s`;
+                    el.innerText = `Next check in ${diff}s`; // 显示倒计时
                     el.style.color = 'var(--green)';
                 } else {
-                    el.innerText = 'Updating...';
+                    el.innerText = 'Updating...'; // 倒计时结束，显示正在更新
                     el.style.color = 'var(--yellow)';
                 }
             }
 
-            updateTimer();
-            countdownInterval = setInterval(updateTimer, 1000);
+            updateTimer(); // 立即执行一次
+            countdownInterval = setInterval(updateTimer, 1000); // 每秒更新
         }
 
+        // 核心渲染函数：根据数据更新页面 DOM
         function updateDisplay(data) {
             const grid = document.getElementById('grid');
             if (data.last_check) {
-                // Format time to CDT/CST
+                // 格式化时间为 CDT/CST (芝加哥时间)
                 const date = new Date(data.last_check);
                 const formatter = new Intl.DateTimeFormat('en-US', {
                     timeZone: 'America/Chicago',
                     hour: '2-digit',
                     minute: '2-digit',
                     second: '2-digit',
-                    hour12: false,
+                    hour12: false, // 使用 24 小时制以防混淆
                     timeZoneName: 'short'
                 });
                 document.getElementById('lastCheck').innerText = "Last checked: " + formatter.format(date);
 
-                // Restart countdown
+                // 根据新时间重置倒计时
                 startCountdown(data.last_check);
             }
 
             if (!data.sites) return;
 
-            grid.innerHTML = '';
+            grid.innerHTML = ''; // 清空当前卡片 (TODO: 生产环境可用 Diff 算法优化，但此处全量替换够用了)
 
-            // Sort alphabetically
+            // 按字母顺序对站点排序
             Object.keys(data.sites).sort().forEach(name => {
                 const site = data.sites[name];
                 const history = site.history || [];
 
-                // --- Generate Bars (20 items) ---
+                // --- 生成 20 条历史记录柱状图 ---
                 let barsHtml = '';
                 for (let i = 0; i < 20; i++) {
-                    const idx = history.length - (20 - i);
-                    let style = 'height: 4px; background: #334155';
+                    const idx = history.length - (20 - i); // 从后往前取最近 20 条
+                    let style = 'height: 4px; background: #334155'; // 默认无数据样式
                     let tooltip = 'No Data';
 
                     if (idx >= 0) {
                         const point = history[idx];
+                        // 计算高度百分比：最大 1000ms = 100% (这里缩放比例为 time/10)
+                        // 修正：目前代码是 time/1000 * 100，即 1秒 = 100%
                         let pct = Math.min((point.time / 1000) * 100, 100);
-                        if (point.status !== 'up') pct = 100;
-                        pct = Math.max(pct, 15);
+                        if (point.status !== 'up') pct = 100; // 如果宕机，显示满格高度（红色）
+                        pct = Math.max(pct, 15); // 即使很快，也保留 15% 最小高度以便看见
 
                         const color = getBarColor(point.time, point.status);
                         style = `height: ${pct}%; background: ${color}`;
@@ -292,11 +346,14 @@
                     barsHtml += `<div class="bar" style="${style}" title="${tooltip}"></div>`;
                 }
 
-                // --- Pie Chart Style ---
+                // --- 饼图渐变样式 ---
+                // 使用 conic-gradient 创建圆环进度条
                 const pieStyle = `background: conic-gradient(var(--green) 0% ${site.uptime}%, #334155 ${site.uptime}% 100%)`;
                 const statusColor = site.current.status === 'up' ? 'var(--green)' : 'var(--red)';
+                // 如果正常显示毫秒数，否则显示 DOWN
                 const statusText = site.current.status === 'up' ? site.current.time + 'ms' : 'DOWN';
 
+                // --- 构建卡片 HTML ---
                 const card = document.createElement('div');
                 card.className = 'service-card';
                 card.innerHTML = `
@@ -320,6 +377,7 @@
                             <div class="status-badge" style="color: ${statusColor}" title="${site.current.error || ''}">
                                 ${statusText}
                             </div>
+                            <!-- 如果有具体错误信息 (如 Timeout)，显示在下方红色小字 -->
                             ${site.current.status !== 'up' && site.current.error ?
                         `<div style="color: var(--red); font-size: 0.65rem; max-width: 140px; text-align: right; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${site.current.error}">${site.current.error}</div>`
                         : ''}
@@ -330,17 +388,19 @@
             });
         }
 
-        // Initialize
+        // 初始化：渲染首屏数据
         if (INITIAL_DATA) updateDisplay(INITIAL_DATA);
 
-        // Auto-refresh using fetch
+        // 自动刷新：轮询 API
         setInterval(async () => {
             try {
                 const res = await fetch('/api/status');
                 const data = await res.json();
                 updateDisplay(data);
-            } catch (e) { console.error(e); }
-        }, 5000); // Check for updates more frequently (5s) to sync UI, though server updates every 30s
+            } catch (e) {
+                console.error("Fetch error:", e); // 连接失败只在控制台报错，不打扰用户
+            }
+        }, 5000); // 前端每 5 秒轮询一次，虽然服务器是 30 秒更新，但为了更快的 UI 响应
     </script>
 </body>
 

@@ -54,45 +54,18 @@ current_status = {}
 last_check_time = None
 
 def load_history():
-    """Load history from JSON file on startup"""
-    global status_history, last_check_time, current_status
-    if os.path.exists(HISTORY_FILE):
-        try:
-            with open(HISTORY_FILE, 'r') as f:
-                data = json.load(f)
-                # Convert lists back to deque-like behavior (keep last 20)
-                loaded_history = data.get('history', {})
-                status_history = {site: list(loaded_history.get(site, []))[-HISTORY_LENGTH:] for site in SITES}
-                
-                # Load last known status
-                current_status = data.get('current', {})
-                last_check_string = data.get('last_check')
-                last_check_time = datetime.fromisoformat(last_check_string) if last_check_string else None
-                logger.info("Loaded history from file.")
-        except Exception as e:
-            logger.error(f"Failed to load history: {e}")
-            status_history = {site: [] for site in SITES}
-    else:
-        status_history = {site: [] for site in SITES}
+# 监控配置参数
+HISTORY_LENGTH = 20  # 保留最近 20 次的历史数据
+UPDATE_INTERVAL = 30  # 每 30 秒更新一次
 
-def save_history():
-    """Save current state to JSON file"""
-    try:
-        data = {
-            'history': status_history,
-            'current': current_status,
-            'last_check': last_check_time.isoformat() if last_check_time else None
-        }
-        with open(HISTORY_FILE, 'w') as f:
-            json.dump(data, f)
-    except Exception as e:
-        logger.error(f"Failed to save history: {e}")
+# 全局变量，用于存储状态数据（内存存储）
+status_history = {}  # 历史记录字典
+current_status = {}  # 当前状态字典
+last_check_time = None  # 上次检查时间
 
-# Load immediately on start
-load_history()
-
-# Global session for connection reuse
+# 全局 Session 对象，用于复用 TCP 连接，提高性能
 session = requests.Session()
+# 设置请求头，伪装成 Chrome 浏览器，防止被防火墙拦截 (WAF)
 session.headers.update({
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -108,21 +81,30 @@ session.headers.update({
 })
 
 def check_website(name, url):
+    """
+    检查单个网站的状态
+    :param name: 网站名称
+    :param url: 网站 URL
+    :return: 包含状态信息的字典
+    """
     try:
-        start_time = time.time()
+        start_time = time.time()  # 记录开始时间
         
-        # Increase timeout to 15 seconds & allow redirects
-        # Verify=False is already set for Media Space compatibility
+        # 发送 GET 请求
+        # timeout=15: 设置 15 秒超时，防止网络卡顿
+        # verify=False: 禁用 SSL 证书验证（解决 Media Space 等网站证书报错问题）
+        # allow_redirects=True: 允许自动跳转
         response = session.get(url, timeout=15, verify=False, allow_redirects=True)
         
+        # 计算响应时间（毫秒）
         response_time = round((time.time() - start_time) * 1000)
         
-        # Consider 403 as potentially UP if it's just blocking bots, but ideally we want 200
-        # For now, stick to standard status checks
+        # 判断状态：200, 301, 302 都视为正常
+        # 403 有时是防爬虫拦截，但在本监控中严谨起见，非 2xx/3xx 视为异常
         status = 'up' if response.status_code in [200, 301, 302] else 'down'
         
+        # 特殊处理 403 Forbidden 错误，标记为防火墙拦截
         if response.status_code == 403:
-             # If 403, it might be WAF blocking. Let's mark as down but log it distinctively
              status = 'down'
              error_msg = f"403 Forbidden (WAF Block)"
              return {
@@ -130,81 +112,96 @@ def check_website(name, url):
                 'time': response_time,
                 'code': response.status_code,
                 'error': error_msg,
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()  # 使用 UTC 时间
             }
 
         return {
             'status': status,
             'time': response_time,
             'code': response.status_code,
-            'timestamp': datetime.now().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()  # 使用 UTC 时间
         }
     except Exception as e:
-        logger.error(f"Error checking {name}: {e}")
+        # 捕获所有连接异常（如超时、DNS 解析失败等）
+        logger.error(f"Error checking {name}: {e}")  # 记录错误日志
         return {
             'status': 'down',
             'time': 0,
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
+            'error': str(e),  # 将具体错误信息返回给前端
+            'timestamp': datetime.now(timezone.utc).isoformat()  # 使用 UTC 时间
         }
 
-def update_loop():
+def monitor_loop():
+    """
+    后台监控循环线程
+    每隔 UPDATE_INTERVAL 秒检查一次所有站点
+    """
     global last_check_time
+    logger.info("Monitor thread started...")  # 记录线程启动
     while True:
-        logger.info("Starting status check...")
-        for name, url in SITES.items():
-            result = check_website(name, url)
+        try:
+            # 遍历所有站点进行检查
+            for name, url in SITES.items():
+                result = check_website(name, url)
+                
+                # 更新当前状态
+                current_status[name] = result
+                
+                # 更新历史记录
+                if name not in status_history:
+                    status_history[name] = []
+                
+                status_history[name].append(result)
+                
+                # 保持历史记录长度不超过 HISTORY_LENGTH
+                if len(status_history[name]) > HISTORY_LENGTH:
+                    status_history[name].pop(0)
             
-            # Update current status cache
-            current_status[name] = result
+            # 更新最后检查时间 (使用 UTC 时间，并确保包含时区信息 'Z' 以便 JS 正确解析)
+            # datetime.utcnow() 是不带时区的，isoformat() 加上 'Z' 表示 UTC
+            last_check_time = datetime.now(timezone.utc).isoformat()
             
-            # Update history
-            if name not in status_history:
-                status_history[name] = []
+            logger.info(f"Check complete at {last_check_time}")  # 记录检查完成
             
-            status_history[name].append(result)
-            if len(status_history[name]) > HISTORY_LENGTH:
-                status_history[name].pop(0)
+        except Exception as e:
+            logger.error(f"Error in monitor loop: {e}")  # 记录循环中的意外错误
         
-        last_check_time = datetime.now()
-        save_history()
-        logger.info("Status check complete.")
-        time.sleep(UPDATE_INTERVAL)
+        time.sleep(UPDATE_INTERVAL)  # 等待下一次检查
 
-def calculate_uptime(name):
-    history = status_history.get(name, [])
-    if not history:
-        return 0
-    # Avoid division by zero
-    if len(history) == 0:
-        return 0
-    up_count = sum(1 for entry in history if entry.get('status') == 'up')
-    return round((up_count / len(history)) * 100)
-
-# Start background thread
-checker_thread = threading.Thread(target=update_loop, daemon=True)
-checker_thread.start()
+# 启动后台监控线程
+# 注意：在 Gunicorn 等生产环境中，需要确保这部分代码能被执行
+if not os.environ.get('WERKZEUG_RUN_MAIN'):
+    # daemon=True: 守护线程，主程序退出时线程自动退出
+    threading.Thread(target=monitor_loop, daemon=True).start()
 
 @app.route('/')
 def index():
-    # Construct data object similar to API response
-    data = {
-        'last_check': last_check_time.isoformat() if last_check_time else None,
+    """
+    首页路由
+    渲染 index.html 并注入初始数据
+    """
+    # 构造初始数据包
+    initial_data = {
         'sites': {
             name: {
                 'current': current_status.get(name, {}),
                 'history': status_history.get(name, []),
                 'url': url,
+                # 计算在线率 (Uptime)
                 'uptime': calculate_uptime(name)
             } for name, url in SITES.items()
-        }
+        },
+        'last_check': last_check_time
     }
-    return render_template('index.html', initial_data=data)
+    return render_template('index.html', initial_data=initial_data)
 
 @app.route('/api/status')
-def status():
-    return jsonify({
-        'last_check': last_check_time.isoformat() if last_check_time else None,
+def get_status():
+    """
+    API 接口
+    返回当前所有站点的 JSON 数据，供前端 AJAX 轮询
+    """
+    data = {
         'sites': {
             name: {
                 'current': current_status.get(name, {}),
@@ -212,9 +209,24 @@ def status():
                 'url': url,
                 'uptime': calculate_uptime(name)
             } for name, url in SITES.items()
-        }
-    })
+        },
+        'last_check': last_check_time
+    }
+    return jsonify(data)
+
+def calculate_uptime(name):
+    """
+    计算在线率辅助函数
+    基于内存中的历史数据计算百分比
+    """
+    history = status_history.get(name, [])
+    if not history:
+        return 0
+    # 统计状态为 'up' 的次数
+    up_count = sum(1 for x in history if x['status'] == 'up')
+    # 计算百分比并取整
+    return int((up_count / len(history)) * 100)
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
+    # 开发环境启动模式
+    app.run(debug=True, host='0.0.0.0', port=5000)
