@@ -194,7 +194,11 @@
     <div class="container">
         <header>
             <h1>UIUC Services Monitor</h1>
-            <div class="timestamp" id="lastCheck">Syncing...</div>
+            <div class="timestamp">
+                <span id="lastCheck">Syncing...</span>
+                <span id="countdown"
+                    style="margin-left: 10px; color: var(--green); font-weight: 600; font-variant-numeric: tabular-nums;"></span>
+            </div>
         </header>
 
         <div id="grid" class="services-grid">
@@ -208,16 +212,55 @@
         // Load initial data from Python
         const INITIAL_DATA = JSON.parse(document.getElementById('initial-data').textContent);
 
+        let countdownInterval;
+
         function getBarColor(ms, status) {
             if (status !== 'up') return 'var(--red)';
             if (ms > 500) return 'var(--yellow)';
             return 'var(--green)';
         }
 
+        function startCountdown(lastCheckTimeStr) {
+            if (countdownInterval) clearInterval(countdownInterval);
+
+            const lastCheckTime = new Date(lastCheckTimeStr).getTime();
+            const nextCheckTime = lastCheckTime + 30000 + 2000; // 30s interval + 2s buffer
+
+            function updateTimer() {
+                const now = Date.now();
+                const diff = Math.ceil((nextCheckTime - now) / 1000);
+
+                const el = document.getElementById('countdown');
+                if (diff > 0) {
+                    el.innerText = `Next check in ${diff}s`;
+                    el.style.color = 'var(--green)';
+                } else {
+                    el.innerText = 'Updating...';
+                    el.style.color = 'var(--yellow)';
+                }
+            }
+
+            updateTimer();
+            countdownInterval = setInterval(updateTimer, 1000);
+        }
+
         function updateDisplay(data) {
             const grid = document.getElementById('grid');
             if (data.last_check) {
-                document.getElementById('lastCheck').innerText = "Last checked: " + new Date(data.last_check).toLocaleTimeString();
+                // Format time to CDT/CST
+                const date = new Date(data.last_check);
+                const formatter = new Intl.DateTimeFormat('en-US', {
+                    timeZone: 'America/Chicago',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false,
+                    timeZoneName: 'short'
+                });
+                document.getElementById('lastCheck').innerText = "Last checked: " + formatter.format(date);
+
+                // Restart countdown
+                startCountdown(data.last_check);
             }
 
             if (!data.sites) return;
@@ -290,13 +333,14 @@
         // Initialize
         if (INITIAL_DATA) updateDisplay(INITIAL_DATA);
 
-        // Auto-refresh
+        // Auto-refresh using fetch
         setInterval(async () => {
             try {
                 const res = await fetch('/api/status');
-                updateDisplay(await res.json());
+                const data = await res.json();
+                updateDisplay(data);
             } catch (e) { console.error(e); }
-        }, 30000);
+        }, 5000); // Check for updates more frequently (5s) to sync UI, though server updates every 30s
     </script>
 </body>
 
